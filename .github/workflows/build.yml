@@ -1,0 +1,50 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Flutter APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Extract Zip
+        run: |
+          if ls *.zip 1> /dev/null 2>&1; then
+            unzip -o *.zip
+          fi
+          if [ -d "auranex" ]; then
+            echo "APP_DIR=auranex" >> $GITHUB_ENV
+          else
+            echo "APP_DIR=." >> $GITHUB_ENV
+          fi
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Build Release APK
+        run: |
+          cd $APP_DIR
+          flutter pub get
+          flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: auranex-release-apk
+          path: '**/build/app/outputs/flutter-apk/app-release.apk'
