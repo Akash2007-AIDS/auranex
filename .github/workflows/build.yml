@@ -14,15 +14,42 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Extract Zip
+      - name: Extract Zip and Find Project
         run: |
-          if ls *.zip 1> /dev/null 2>&1; then
-            unzip -o *.zip
+          echo "=== Extracting any zip files ==="
+          find . -iname "*.zip" -exec unzip -o {} \;
+
+          echo "=== Locating Flutter project ==="
+          PUBSPEC_FILE=$(find . -name "pubspec.yaml" -not -path "*/.*" | head -n 1)
+
+          if [ -z "$PUBSPEC_FILE" ]; then
+            echo "ERROR: pubspec.yaml not found! All files:"
+            find . -maxdepth 3
+            exit 1
           fi
-          if [ -d "auranex" ]; then
-            echo "APP_DIR=auranex" >> $GITHUB_ENV
-          else
-            echo "APP_DIR=." >> $GITHUB_ENV
+
+          PROJECT_DIR=$(dirname "$PUBSPEC_FILE")
+          echo "Found project at: $PROJECT_DIR"
+          echo "APP_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+      - name: Auto-patch Configs
+        run: |
+          cd $APP_DIR
+          # Add local_auth to pubspec if missing
+          if grep -q "local_auth" lib/services/biometric_service.dart 2>/dev/null; then
+            if ! grep -q "local_auth:" pubspec.yaml; then
+              sed -i '/dependencies:/a \  local_auth: ^2.2.0' pubspec.yaml
+            fi
+          fi
+          # Fix compileSdk 36 and plugin id if present
+          if [ -f "android/app/build.gradle.kts" ]; then
+            sed -i 's/compileSdk = 36/compileSdk = 35/g' android/app/build.gradle.kts
+            sed -i 's/id("kotlin-android")/id("org.jetbrains.kotlin.android")/g' android/app/build.gradle.kts
+          fi
+          # Fix MainActivity for biometrics
+          MAIN_KT=$(find android -name "MainActivity.kt" 2>/dev/null | head -n 1)
+          if [ -n "$MAIN_KT" ]; then
+            sed -i 's/FlutterActivity/FlutterFragmentActivity/g' "$MAIN_KT"
           fi
 
       - name: Set up Java 17
